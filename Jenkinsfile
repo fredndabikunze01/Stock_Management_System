@@ -12,7 +12,7 @@ pipeline {
     stages {
         stage('Validate Compose') {
             steps {
-                sh 'docker compose config --quiet'
+                sh 'docker compose config > /dev/null'
             }
         }
 
