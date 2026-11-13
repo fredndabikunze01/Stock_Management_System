@@ -9,3 +9,4 @@ backend/target/
 *.iml
 *.log
 .DS_Store
+.env.example

@@ -15,7 +15,7 @@ WORKDIR /app
 COPY --from=build /workspace/target/stock-management.jar app.jar
 RUN chown app:app app.jar
 USER app
-EXPOSE 8080
+EXPOSE 8081
 HEALTHCHECK --interval=15s --timeout=3s --start-period=45s --retries=5 \
-    CMD curl --fail --silent http://localhost:8080/actuator/health/readiness || exit 1
+    CMD curl --fail --silent http://localhost:8081/actuator/health/readiness || exit 1
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=70.0", "-jar", "/app/app.jar"]

@@ -23,10 +23,10 @@ A lightweight full-stack inventory application for the Development Operations co
 ## Architecture
 
 ```text
-Browser ── HTTP :3000 ──> Frontend container (Nginx + React)
+Browser ── HTTP :3000 ──> Frontend container (Nginx + React :80)
                                   │ /api/* reverse proxy
                                   ▼
-                         Backend container (:8080)
+                         Backend container (:8081)
                                   │ JDBC on private Docker network
                                   ▼
                          PostgreSQL container (:5432)
@@ -51,14 +51,17 @@ Stock_Management_System/
 │   │   └── service/         # Business logic and transactions
 │   ├── src/test/            # Backend unit tests
 │   ├── Dockerfile
+│   ├── .dockerignore
 │   └── pom.xml
 ├── frontend/
 │   ├── src/                 # React app, API client, and styles
 │   ├── Dockerfile
+│   ├── .dockerignore
 │   ├── nginx.conf
 │   └── package.json
 ├── docker-compose.yml
 ├── docker-compose.published.yml
+├── Jenkinsfile
 ├── .env.example
 └── README.md
 ```
@@ -90,8 +93,8 @@ docker compose logs -f backend
 The backend starts after PostgreSQL passes its health check; the frontend starts after the API reports ready. Open:
 
 - Frontend: <http://localhost:3000>
-- Backend health: <http://localhost:8080/actuator/health>
-- Backend API: <http://localhost:8080/api>
+- Backend health: <http://localhost:8081/actuator/health>
+- Backend API: <http://localhost:8081/api>
 
 Stop the containers and keep the database contents:
 
@@ -110,9 +113,15 @@ To also delete the persisted database, use `docker compose down -v`. This perman
 | `POSTGRES_PASSWORD` | Database password; required | Set in `.env` |
 | `LOW_STOCK_THRESHOLD` | Positive quantity at or below which a product is low-stock | `10` |
 | `FRONTEND_PORT` | Host port mapped to Nginx | `3000` |
-| `BACKEND_PORT` | Host port mapped to the API | `8080` |
+| `BACKEND_PORT` | Host port mapped to the API | `8081` |
 | `CORS_ALLOWED_ORIGINS` | Allowed local browser origins for direct API access | `http://localhost:3000,http://localhost:5173` |
 | `DOCKERHUB_USERNAME` | Docker Hub account for the published-image Compose file | Set in `.env` |
+
+### Deploy with Jenkins
+
+Configure a Jenkins Pipeline or Multibranch Pipeline to use this repository's `Jenkinsfile`. The Ubuntu agent must have Docker Engine, the Docker Compose v2 plugin, and permission to use the Docker daemon. Add a Jenkins **Secret text** credential with ID `stock-management-postgres-password`; Jenkins injects it at runtime and does not write it into the repository. The pipeline validates Compose, builds both application images, starts the Compose services, and smoke-tests the frontend and proxied API. The application is available at `http://<Ubuntu-host>:3000` (or the configured `FRONTEND_PORT`).
+
+For deployments with an existing PostgreSQL volume, set the Jenkins credential to the password already used to initialize that database. PostgreSQL only applies `POSTGRES_USER`, `POSTGRES_DB`, and `POSTGRES_PASSWORD` when initializing an empty data directory.
 
 Database credentials are injected into the backend from the Compose environment; they are not embedded in application source or the image. Hibernate `ddl-auto=update` is convenient for this assignment; use managed schema migrations for a production deployment.
 
@@ -135,10 +144,10 @@ In another terminal:
 ```bash
 cd frontend
 npm install
-VITE_API_BASE_URL=http://localhost:8080/api npm run dev
+npm run dev
 ```
 
-Open <http://localhost:5173>. `CORS_ALLOWED_ORIGINS` defaults to allow the Vite origin. For the frontend build, `VITE_API_BASE_URL` is a Vite build-time setting; the containerized production build defaults to `/api` and uses Nginx proxy routing. 
+Open <http://localhost:5173>. Vite proxies `/api` to `http://localhost:8081` by default; set `API_PROXY_TARGET` if the backend listens elsewhere. For a production build, `VITE_API_BASE_URL` defaults to the same-origin `/api` path, which Nginx proxies to the backend.
 
 ## REST API
 
@@ -227,7 +236,7 @@ Open <http://localhost:3000>. Confirm the actual registry image references and c
 docker image ls YOUR_DOCKERHUB_USERNAME/stock-management-frontend
 docker image ls YOUR_DOCKERHUB_USERNAME/stock-management-backend
 docker compose -f docker-compose.published.yml logs --tail=100 backend frontend
-curl -fsS http://localhost:8080/actuator/health
+curl -fsS http://localhost:8081/actuator/health
 curl -fsS http://localhost:3000/api/products
 ```
 
@@ -251,7 +260,7 @@ mvn test
 
 ```bash
 docker compose ps
-curl -fsS http://localhost:8080/actuator/health
+curl -fsS http://localhost:8081/actuator/health
 curl -fsS http://localhost:3000/api/dashboard/summary
 curl -fsS http://localhost:3000/api/products
 ```
@@ -260,7 +269,7 @@ The root URL `http://localhost:3000` should load the React application; API call
 
 ### Exercise product, stock, history, and dashboard endpoints
 
-These commands use `jq` to capture a product ID. Set `API=http://localhost:8080` if calling the backend directly, or `API=http://localhost:3000` to also test the Nginx proxy.
+These commands use `jq` to capture a product ID. Set `API=http://localhost:8081` if calling the backend directly, or `API=http://localhost:3000` to also test the Nginx proxy.
 
 ```bash
 API=http://localhost:3000
@@ -321,7 +330,7 @@ For registry verification, use the pull-and-run steps above in a clean Docker en
 ## Troubleshooting
 
 - **Compose says `POSTGRES_PASSWORD` is missing:** copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`.
-- **Frontend shows an API error:** run `docker compose ps`, inspect `docker compose logs backend frontend`, and confirm backend readiness at `http://localhost:8080/actuator/health`.
+- **Frontend shows an API error:** run `docker compose ps`, inspect `docker compose logs backend frontend`, and confirm backend readiness at `http://localhost:8081/actuator/health`.
 - **Backend cannot connect to PostgreSQL:** verify both services share `stock-network`, check `docker compose logs postgres`, and use the `postgres` service name in the JDBC URL. Never use `localhost` for the database from the backend container.
 - **Port is already in use:** change `FRONTEND_PORT` or `BACKEND_PORT` in `.env`, then recreate with `docker compose up -d`.
 - **Docker Hub pull is denied:** verify `docker login`, the username/repository spelling, visibility/permissions, and that the requested tag was pushed.

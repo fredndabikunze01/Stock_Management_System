@@ -4,7 +4,7 @@ services:
     mem_limit: 384m
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-stock_management}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-stock_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -53,12 +53,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: /api
     environment:
       API_BACKEND: backend:8081
     ports:
-      - "${FRONTEND_PORT:-3000}:81"
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       backend:
         condition: service_healthy
